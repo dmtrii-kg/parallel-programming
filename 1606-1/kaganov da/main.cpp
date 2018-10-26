@@ -1,6 +1,6 @@
 #include <iostream>
 #include <random>
-#include <time.h>
+#include <ctime>
 #include "mpi.h"
 using namespace std;
 
@@ -35,15 +35,17 @@ bool searchDot(char c)
 int main(int argc, char *argv[])
 {
 	srand(time(0));
-	int n;							// длина введённой строки
-	int counter = 0;					// колличество предложений в строке
+	int flag;
+	int n = 17;						// string lenght
+	int counter = 0;					// number of sentences
 	int my_counter = 0;
 	int remainderDiv = 0;
 	int ProcNum, ProcRank, RecvRank;
 	double ls_time, le_time, start_time, end_time;
 
-	// автоматическое заполнение строки
-	cout << "Введите длину строки: "; cin >> n;
+	// random fill of string
+	
+	// cout << "Введите длину строки: "; cin >> n;
 	char* str;
 	str = new char[n];
 	str = FillStr(n);
@@ -54,7 +56,7 @@ int main(int argc, char *argv[])
 	MPI_Comm_size(MPI_COMM_WORLD, &ProcNum);
 	MPI_Comm_rank(MPI_COMM_WORLD, &ProcRank);
 	
-	// линейная программа
+	// linear block
 	if(ProcRank == 0)
 	{
 		ls_time = MPI_Wtime();
@@ -68,21 +70,25 @@ int main(int argc, char *argv[])
 				}
 			}
 		}
+
+	// linear result
 		le_time = MPI_Wtime();
+		cout << "\n LINEAR \n";
 		cout << "В введённой строке найдено " << counter << "  предложений\n";
 		cout << "За время: " << le_time - ls_time << endl;
+	// end linear block
 	}
 
-	// параллельная программа
+	// parallel block
 	start_time = MPI_Wtime();
+	
 	MPI_Bcast(str, n, MPI_CHAR, 0, MPI_COMM_WORLD);
 	
 	int size = n / ProcNum;
 	int start = size * ProcRank;
 	int end = size * (ProcRank + 1);
-	if(ProcRank == ProcNum - 1) end = size;
 	
-	for(int i = start + 1; i < end; i++)
+	for(int i = start; i < end; i++)
 	{
 		if(searchDot(str[i]))
 		{
@@ -111,11 +117,15 @@ int main(int argc, char *argv[])
 				}
 			}
 		}
-		end_time = MPI_Wtime();
-		cout << "В введённой строке найдено " << counter << " предложений\n";
-		cout << "За время: " << start_time - end_time << endl;;
-	}
 	
+	// parallel results
+		end_time = MPI_Wtime();
+		cout << "\n PARALLEL \n";
+		cout << "В введённой строке найдено " << counter << " предложений\n";
+		cout << "За время: " << end_time - start_time << endl;;
+	}
 	MPI_Finalize();
+	// end parallel block
+
 	return 0;
 }
