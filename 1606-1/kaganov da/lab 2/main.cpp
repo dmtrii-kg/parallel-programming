@@ -142,7 +142,7 @@ int main(int argc, char *argv[]) {
         
 // LINEAR BLOCK
         linerStart = MPI_Wtime();
-        multiplyMatrix(matrixA, matrixB, lMatrixC, aRows, aColumns, bRows, aColumns);
+        multiplyMatrix(matrixA, matrixB, lMatrixC, aRows, aColumns, bRows, bColumns);
         linerEnd = MPI_Wtime();
         // linear result
         cout << "\n---===LINE===---\n";
