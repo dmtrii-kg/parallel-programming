@@ -42,9 +42,9 @@ int main(int argc, char *argv[])
 	double ls_time, le_time, start_time, end_time;
 
 	// random fill of string
-    	int* CounterVec;
-    	char* str;
-    	char* my_str;
+    int* CounterVec;
+    char* str;
+    char* my_str;
 	str = new char[n + 1];
 	FillStr(str, n);
 
@@ -55,8 +55,8 @@ int main(int argc, char *argv[])
 
 	if (ProcRank == 0)
 	{
-    // linear block
-        	// cout << "\nEnter the string: "; cin >> setw(n) >> str;
+    // LINEAR BLOCK
+        // cout << "\nEnter the string: "; cin >> setw(n) >> str;
 		cout << "\nReceived string: " << str << endl;
 
 		ls_time = MPI_Wtime();
@@ -79,7 +79,7 @@ int main(int argc, char *argv[])
 		cout << "Time: " << le_time - ls_time << endl;
     // end linear block
 
-    // parallel block
+    // PARALLEL BLOCK
         start_time = MPI_Wtime();
         CounterVec = new int[ProcNum];
         for(int i = 1; i < ProcNum; i++)
@@ -149,6 +149,8 @@ int main(int argc, char *argv[])
 	// cin.ignore();
 	// end parallel block
     delete[]str;
+    delete[]my_str;
+    delete[]CounterVec;
     
 	return 0;
 }
