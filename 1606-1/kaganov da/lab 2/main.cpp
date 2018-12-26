@@ -19,7 +19,7 @@ void printMatrix(int *matrix, int rows, int columns, int remainderA, int remaind
     }
 }
 
-
+/*
 void transposition(int *matrix, int *newMatrix, int rows, int columns) {
     for (int i = 0; i < columns; i++) {
         for (int j = 0; j < rows; j++) {
@@ -27,6 +27,7 @@ void transposition(int *matrix, int *newMatrix, int rows, int columns) {
         }
     }
 }
+*/
 
 void multiplyMatrix(int *matrixA, int *matrixB, int *matrixResult, int aRows, int aColumns, int bRows, int bColumns) {
     for (int i = 0; i < aRows; i++) {
@@ -37,6 +38,31 @@ void multiplyMatrix(int *matrixA, int *matrixB, int *matrixResult, int aRows, in
             }
         }
     }
+}
+
+int* generateOffsetArray(const int columns, const int rows, int numProc, int* amountArray) {
+    int* arr = new int[numProc];
+    int currOffset = 0;
+    arr[0] = 0;
+    for (int i = 1; i < numProc; i++) {
+        currOffset = arr[i - 1];
+        arr[i] = currOffset + amountArray[i - 1];
+    }
+    return arr;
+}
+
+int* generateAmountArray(const int columns, const int rows, int numProc) {
+    const int size = columns * rows;
+    int curr = 0;
+    int i = 0;
+    int* arr = new int[numProc];
+    for (int j = 0; j < numProc; j++)
+        arr[j] = 0;
+    while (curr < size) {
+        arr[i++ % numProc]++;
+        curr += rows;
+    }
+    return arr;
 }
 
 void checkResults(int *linearRes, int *parallelRes, int rows, int columns, int remainderB) {
@@ -66,19 +92,25 @@ int main(int argc, char *argv[]) {
     int* lMatrixC = nullptr;
     int* pMatrixA = nullptr;
     int* pMatrixB = nullptr;
+    int* pMatrixRes = nullptr;
     int* pMatrixC = nullptr;
     int tmp = 0;
-    // int aSize = aRows * aColumns;
-    // int bSize = bRows * bColumns;
+    int aSize = aRows * aColumns;
+    int bSize = bRows * bColumns;
     int part_aSize = 0;
     int part_bSize = 0;
     int part_cSize = 0;
     int procNum = 0;
     int procRank = 0;
-    int recvRank = 0;
     int nextProc = 0;
     int prevProc = 0;
     int index = 0;                      // смещение по столбцу в ленте относительно пришедшего столбца
+    int *amountAray = nullptr;
+    int *offsetAray = nullptr;
+    int *elementsPerProcGather = nullptr;
+    int *shiftsGather = nullptr;
+    int *recvbuf = nullptr;
+    int *resultBuffer = nullptr;
     double linerStart = 0.0;
     double linerEnd = 0.0;
     double parallelStart = 0.0;
@@ -109,6 +141,9 @@ int main(int argc, char *argv[]) {
     MPI_Comm_size(MPI_COMM_WORLD, &procNum);
     MPI_Comm_rank(MPI_COMM_WORLD, &procRank);
     
+    MPI_Datatype column;
+    MPI_Datatype columnType;
+    
     partA = static_cast<int>(std::ceil(static_cast<double>(aRows) / static_cast<double>(procNum)));
     partB = static_cast<int>(std::ceil(static_cast<double>(bColumns) / static_cast<double>(procNum)));
     part_aSize = partA * aColumns;
@@ -127,13 +162,13 @@ int main(int argc, char *argv[]) {
         // fill the matrices and transposition matrix B
         createMatrix(matrixA, aRows, aColumns);
         createMatrix(matrixB, bRows, bColumns);
-        transposition(matrixB, tMatrixB, bRows, bColumns);
+        // transposition(matrixB, tMatrixB, bRows, bColumns);
         for (int i = aRows * aColumns; i < partA * procNum * aColumns; i++)
             matrixA[i] = 0;
         for (int i = bRows * bColumns; i < partB * procNum * bRows; i++)
             tMatrixB[i] = 0;
         
-        if ((aColumns < 4) && (aRows < 4) && (bColumns < 4) && (bRows < 4)) {
+        if ((aColumns < 5) && (aRows < 5) && (bColumns < 5) && (bRows < 5)) {
             cout << "\nMatrix A:\n";
             printMatrix(matrixA, aRows, aColumns, 0, 0);
             cout << "\nMatrix B:\n";
@@ -159,24 +194,81 @@ int main(int argc, char *argv[]) {
     pMatrixA = new int[part_aSize];
     pMatrixB = new int[part_bSize];
     pMatrixC = new int[part_cSize];
+    pMatrixRes = new int[part_bSize];
     for (int i = 0; i < part_aSize; i++)
         pMatrixA[i] = 0;
     for (int i = 0; i < part_bSize; i++)
         pMatrixB[i] = 0;
     for (int i = 0; i < part_cSize; i++)
         pMatrixC[i] = 0;
+    for (int i = 0; i < part_bSize; i++)
+        pMatrixRes[i] = 0;
+    
+    amountAray = new int[procNum];
+    offsetAray = new int[procNum];
+    
+    if (procRank == 0) {
+        amountAray = generateAmountArray(bColumns, bRows, procNum);
+        offsetAray = generateOffsetArray(bColumns, bRows, procNum, amountAray);
+        recvbuf = new int[amountAray[0] * bRows];
+        for (int j = 0; j < amountAray[0] * bRows; j++)
+            recvbuf[j] = 0;
+        //amountAray[0] += remainderB * bColumns;
+    }
+    
+    MPI_Type_vector(bRows, 1, bColumns, MPI_INT, &column);
+    MPI_Type_commit(&column);
+    
+    MPI_Type_create_resized(column, 0, 1 * sizeof(int), &columnType);
+    MPI_Type_commit(&columnType);
     
     MPI_Scatter(matrixA, part_aSize, MPI_INT, pMatrixA, part_aSize, MPI_INT, 0, MPI_COMM_WORLD);
-    MPI_Scatter(tMatrixB, part_bSize, MPI_INT, pMatrixB, part_bSize, MPI_INT, 0, MPI_COMM_WORLD);
+    MPI_Scatterv(matrixB, amountAray, offsetAray, columnType, pMatrixB, part_bSize, columnType, 0, MPI_COMM_WORLD);
+    
+    /*
+    //cout parallel matrixB
+    cout << "\nprocNum: " << procRank << endl;
+    for (int i = 0; i < bRows; i++) {
+        for (int j = 0; j < partB; j++) {
+            cout << pMatrixB[i * bRows + j] << " ";
+        }
+        cout << endl;
+    }
+
+    cout << endl;
+    for (int i = 0; i < part_bSize * 2; i++) {
+        cout << pMatrixB[i] << " ";
+    }
+    cout << endl;
+    */
+    
+    //create matrix Result
+    for (int i = 0, k = 0; i <= 2 * part_bSize / partB - 2; i += 2) {
+        for (int j = 0; j < partB; j++) {
+            pMatrixRes[k++] = pMatrixB[i * partB + j];
+        }
+    }
+    
+    /*
+    cout << endl;
+    for (int i = 0; i < part_bSize * 2; i++) {
+        cout << pMatrixRes[i] << " ";
+    }
+    cout << endl;
+    */
+    
     // calculation of elements on the main diagonal
     for (int i = 0; i < partA; i++) {
         for (int j = 0; j < partB; j++) {
             pMatrixC[i * partB * procNum + j + partB * procRank] = 0;
             for (int k = 0; k < aColumns; k++) {
-                pMatrixC[i * partB * procNum + j + partB * procRank] += pMatrixA[i * aColumns + k] * pMatrixB[j * bRows + k];
+                pMatrixC[i * partB * procNum + j + partB * procRank] += pMatrixA[i * aColumns + k] * pMatrixRes[j + partB * k];
             }
+            //cout << "pMatrixC = " << pMatrixC[i * partB * procNum + j + partB * procRank] << endl;
         }
     }
+    
+    
     nextProc = procRank + 1;
     if (procRank == procNum - 1)
         nextProc = 0;
@@ -185,21 +277,37 @@ int main(int argc, char *argv[]) {
         prevProc = procNum - 1;
     
     // cyclic exchange of columns matrix B
+    
+    for (int i = 0; i < part_bSize; i++) {
+        pMatrixRes[i] = 0;
+    }
     for (int num = 1; num < procNum; num++) {                                    // num -- the number of perfect shipments
-        MPI_Sendrecv_replace(pMatrixB, part_bSize, MPI_INT, nextProc, 0,
-                             prevProc, 0, MPI_COMM_WORLD, &status);
+        
+        MPI_Sendrecv_replace(pMatrixB, part_bSize, columnType, nextProc, 0, prevProc, 0, MPI_COMM_WORLD, &status);
+        
+        cout << "\nprocNum: " << procRank << endl;
+        for (int i = 0; i < bRows; i++) {
+            for (int j = 0; j < partB; j++) {
+                cout << pMatrixB[i * bRows + j] << " ";
+            }
+            cout << endl;
+        }
+        
         for (int i = 0; i < partA; i++) {
             for (int j = 0; j < partB; j++) {
                 tmp = 0;
-                for (int k = 0; k < aColumns; k++)
-                    tmp += pMatrixA[i * aColumns + k] * pMatrixB[j * bRows + k];
-                if (procRank - num >= 0)
+                for (int k = 0; k < aColumns; k++) {
+                    tmp += pMatrixA[i * aColumns + k] * pMatrixRes[j + bRows * k];
+                }
+                if (procRank - num >= 0) {
                     index = procRank - num;
-                else
+                } else {
                     index = (procRank - num + procNum);
+                }
                 pMatrixC[i * partB * procNum + j + index * partB] = tmp;
             }
         }
+        
     }
     
     // assembly of the resulting matrix
@@ -218,15 +326,16 @@ int main(int argc, char *argv[]) {
         checkResults(lMatrixC, matrixC, aRows, bColumns, remainderB);
     }
     MPI_Finalize();
-    if (pMatrixA != NULL ) delete []pMatrixA;
-    if (pMatrixB != NULL ) delete []pMatrixB;
-    if (pMatrixC != NULL ) delete []pMatrixC;
+    if (pMatrixA != NULL) delete []pMatrixA;
+    if (pMatrixB != NULL) delete []pMatrixB;
+    if (pMatrixC != NULL) delete []pMatrixC;
+    if (pMatrixRes != NULL) delete []pMatrixRes;
     // END PARALLEL BLOCK
-    if (matrixA != NULL ) delete []matrixA;
-    if (matrixB != NULL ) delete []matrixB;
-    if (lMatrixC != NULL ) delete []lMatrixC;
-    if (matrixC != NULL ) delete []matrixC;
-    if (tMatrixB != NULL ) delete []tMatrixB;
+    if (matrixA != NULL) delete []matrixA;
+    if (matrixB != NULL) delete []matrixB;
+    if (lMatrixC != NULL) delete []lMatrixC;
+    if (matrixC != NULL) delete []matrixC;
+    if (tMatrixB != NULL) delete []tMatrixB;
     
     return 0;
 }
