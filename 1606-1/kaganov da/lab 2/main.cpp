@@ -19,7 +19,6 @@ void printMatrix(int *matrix, int rows, int columns, int remainderA, int remaind
     }
 }
 
-/*
 void transposition(int *matrix, int *newMatrix, int rows, int columns) {
     for (int i = 0; i < columns; i++) {
         for (int j = 0; j < rows; j++) {
@@ -27,7 +26,6 @@ void transposition(int *matrix, int *newMatrix, int rows, int columns) {
         }
     }
 }
-*/
 
 void multiplyMatrix(int *matrixA, int *matrixB, int *matrixResult, int aRows, int aColumns, int bRows, int bColumns) {
     for (int i = 0; i < aRows; i++) {
@@ -225,7 +223,7 @@ int main(int argc, char *argv[]) {
     MPI_Scatter(matrixA, part_aSize, MPI_INT, pMatrixA, part_aSize, MPI_INT, 0, MPI_COMM_WORLD);
     MPI_Scatterv(matrixB, amountAray, offsetAray, columnType, pMatrixB, part_bSize, columnType, 0, MPI_COMM_WORLD);
     
-    /*
+    
     //cout parallel matrixB
     cout << "\nprocNum: " << procRank << endl;
     for (int i = 0; i < bRows; i++) {
@@ -235,6 +233,7 @@ int main(int argc, char *argv[]) {
         cout << endl;
     }
 
+    /*
     cout << endl;
     for (int i = 0; i < part_bSize * 2; i++) {
         cout << pMatrixB[i] << " ";
@@ -249,13 +248,11 @@ int main(int argc, char *argv[]) {
         }
     }
     
-    /*
     cout << endl;
-    for (int i = 0; i < part_bSize * 2; i++) {
+    for (int i = 0; i < part_bSize; i++) {
         cout << pMatrixRes[i] << " ";
     }
     cout << endl;
-    */
     
     // calculation of elements on the main diagonal
     for (int i = 0; i < partA; i++) {
@@ -283,7 +280,7 @@ int main(int argc, char *argv[]) {
     }
     for (int num = 1; num < procNum; num++) {                                    // num -- the number of perfect shipments
         
-        MPI_Sendrecv_replace(pMatrixB, part_bSize, columnType, nextProc, 0, prevProc, 0, MPI_COMM_WORLD, &status);
+        MPI_Sendrecv_replace(pMatrixB, part_bSize, MPI_INT, nextProc, 0, prevProc, 0, MPI_COMM_WORLD, &status);
         
         cout << "\nprocNum: " << procRank << endl;
         for (int i = 0; i < bRows; i++) {
@@ -291,6 +288,12 @@ int main(int argc, char *argv[]) {
                 cout << pMatrixB[i * bRows + j] << " ";
             }
             cout << endl;
+        }
+        
+        for (int i = 0, k = 0; i <= 2 * part_bSize / partB - 2; i += 2) {
+            for (int j = 0; j < partB; j++) {
+                pMatrixRes[k++] = pMatrixB[i * partB + j];
+            }
         }
         
         for (int i = 0; i < partA; i++) {
@@ -307,7 +310,7 @@ int main(int argc, char *argv[]) {
                 pMatrixC[i * partB * procNum + j + index * partB] = tmp;
             }
         }
-        
+        //*/
     }
     
     // assembly of the resulting matrix
